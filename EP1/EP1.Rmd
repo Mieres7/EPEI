@@ -1,0 +1,68 @@
+---
+title: "EP1"
+output: html_document
+date: "2023-08-31"
+---
+
+```{r}
+#============
+# LIBRERIAS #
+#============
+
+library(dplyr)
+library(ggpubr)
+
+```
+
+
+```{r}
+
+setwd("C:/Users/Vicente/Desktop/MisCosas/Informatics/Estadistica Inf/EP1")
+
+# Obtencion de datos
+data <- read.csv2("EP01 Datos Casen 2017.csv")
+
+data
+
+# Filtro de datos segun sexo
+dataHombre <- data %>% filter(sexo == "Hombre")
+dataMujer <- data %>% filter(sexo == "Mujer")
+
+# Cálculo de la media
+meanHombre <- mean(dataHombre[["ytot"]])
+meanMujer <- mean(dataMujer[["ytot"]])
+
+meanHombre
+meanMujer
+
+muestraH <- dataHombre %>% sample_n(100)
+muestraM <- dataMujer %>% sample_n(100)
+
+```
+
+```{r}
+
+
+g <- ggboxplot(muestraH[["ytot"]],
+               color = "red",
+               fill = "pink",
+               ylab = "Ingresos Hombre")
+
+g <- g + rremove("x.ticks")
+g <- g + rremove("x.text")
+g <- g + rremove("x.title")
+
+
+g2 <- ggboxplot(muestraM[["ytot"]],
+               color = "blue",
+               fill = "pink",
+               ylab = "Ingresos Mujer")
+
+g2 <- g2 + rremove("x.ticks")
+g2 <- g2 + rremove("x.text")
+g2 <- g2 + rremove("x.title")
+
+print(g)
+print(g2)
+```
+

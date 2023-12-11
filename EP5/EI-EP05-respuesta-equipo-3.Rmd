@@ -1,0 +1,118 @@
+---
+title: "Ejercicio Práctico Nº5"
+author: "Grupo 3"
+output: html_document
+date: "2023-10-11"
+---
+
+
+```{r}
+#Librerías
+library(tidyverse)
+library(ggpubr)
+library(ez)
+library(dplyr)
+```
+
+Enunciado:
+
+Un equipo de investigadores del área de interacción humano-información está estudiando si el área temática y el nivel de dificultad del problema de información influyen en el tiempo (en segundos) que toma un usuario en formular una consulta de búsqueda para resolver dicho problema. Para ello, han reclutado a un grupo de participantes voluntarios, asignados aleatoriamente a distintos grupos. Cada participante debe resolver tres problemas de información con diferentes niveles de dificultad: baja, media y alta. A su vez, cada grupo debe resolver problemas relacionados a una temática diferente.
+
+En este momento, los investigadores buscan determinar si existen diferencias en el tiempo que tardan los usuarios en formular una consulta para un problema de dificultad media en las áreas de economía, literatura y arquitectura.
+
+Es por esto que podemos plantear las siguientes hipótesis.
+
+H_0: No existe diferencia en el tiempo que tardan los usuarios en formular una consulta.
+H_a: Al menos uno de los grupos presenta diferencia respecto al tiempo que tardan los usuarios en formular una consulta.
+
+```{r}
+# Obtención de datos
+data <- read.csv2("EP05 Datos.csv", sep = ",")
+
+economia <- data %>% filter(area == "Economía") %>% filter(dificultad == "Media") %>% pull(tiempo)
+literatura <- data  %>% filter(area == "Literatura") %>% filter(dificultad == "Media") %>% pull(tiempo)
+arquitectura <- data  %>% filter(area == "Arquitectura") %>% filter(dificultad == "Media") %>% pull(tiempo)
+
+```
+
+
+```{r}
+#Análisis de condiciones para procedimiento ANOVA
+
+# 1. La escala con que se mide la variable dependiente tiene las propiedades de una escala de intervalos iguales.
+
+# Para comprobar esta condición utilizamos el gráfico de caja mostrado más abajo.
+
+# 2. La k muestras son aleatorias e independientes desde la población de origen.
+# Dado que los voluntarios se asignaron aleatoriamente a distintos grupos y las areas son distintas entre si, se comprueba esta condición.
+
+# 3. Se puede suponer que estas provienen de una distribución normal
+
+# 4. Si las muestras provienen de más de una población, éstas tienen la misma varianza.
+# Para comprobar esto realizamos el siguiente cálculo.
+
+varEconomia <- var(economia)
+varLiteratura <- var(literatura)
+varArquitectura <- var(arquitectura)
+
+cat("La varianzas de cada grupo de datos son: \nEconomía: ", varEconomia, "\nLiteratura: ", varLiteratura, "\nArquitectura: ", varArquitectura)
+
+cat("\nCondicion de homocedasticidad: " ,varArquitectura/varEconomia, "< 1.5")
+
+# Por lo tanto se cumple la condición.
+
+```
+Puesto que se verificaron las cuatro condiciones para realizar un procedimiento ANOVA, procedemos a realizar la prueba.
+
+```{r}
+# Desarrollo
+
+# Graficamos medias
+
+datos <- data.frame(economia, literatura, arquitectura)
+
+datos <- datos %>% pivot_longer(c("economia", "literatura", "arquitectura"),
+                              names_to = "area",
+                              values_to = "tiempos")
+
+datos[["area"]] <- factor(datos[["area"]])
+datos[["instancias"]] <- factor(1:nrow(datos))
+
+
+test <- aov(tiempos ~ area, data = datos)
+print(summary(test))
+
+g <- ggboxplot(datos, 
+               x = "area",
+               y = "tiempos",
+               color = "area")
+
+g <- g + rremove("x.ticks") + rremove("x.text")
+g <- g + rremove("y.ticks") + rremove("y.text") 
+g <- g + rremove("axis.title")
+
+print(g)
+
+```
+Con los resultados obtenidos en la prueba, se puede concluir que se rechaza la hipótesis nula, por lo tanto, con un 95% de confianza podemos asegurar que existe diferencia en el tiempo que tardan los usuarios en realizar una pregunta para las areas de economía, literatura y arquitectura.
+
+Puesto que se obtuvo un p-value = 7.61e-11 < alpha = 0.05, no hace falta realizar un procedimiento Post-Hoc. Sin embargo este se realizará de todas formas a modo de comprobación. Para este caso se utilizará la prueba HSD de Tukey, dado que esta busca diferencias significativas entre los diferentes pares de medias, la cual corresponde a una pruebas mas poderosa que Bonferroni o Holm.
+
+```{r}
+# Procedimiento Post-Hoc
+
+alpha <- 0.05
+
+tukey <- TukeyHSD(test,
+                  "area",
+                  ordered = TRUE,
+                  conf.level = 1 - alpha)
+tukey
+
+```
+Tras aplicar el procedimiento, se comprueba los resultados obtenidos anteriormente, puesto que sugiere una diferencia significativa entre los pares de grupos estudiados.
+
+Finalmente, se puede concluir que existe diferencia en los tiempos de que tardan los usuarios en formular una consulta en las áreas de arquitectura, literatura y economía.
+
+
+

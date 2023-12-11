@@ -1,0 +1,140 @@
+---
+title: "Ejercicio prctico 2"
+author: "Branco García Santana"
+date: "2023-09-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+**Equipo 3 - Preguntas:**
+
+1.  El Comité Olímpico cree que el mejor tiempo medio de los atletas de raza blanca después de ingresar al programa de entrenamiento es de 13,6 segundos. ¿Soportan los datos esta afirmación?
+
+2.  ¿Sugieren los datos que la mejor marca de los atletas de raza oriental se reduce en promedio menos de 4,7 segundos tras el entrenamiento?
+
+3.  ¿Es posible afirmar que, en promedio, los atletas de raza negra superaban a los de raza blanca por más de 2 segundos antes del entrenamiento?
+
+4.  ¿Será cierto que hay más atletas de raza blanca que, en promedio, redujeron sus marcas en al menos 2,9 segundos que atletas de raza negra que lo hicieron en al menos 1,9 segundos?
+
+**Instrucciones**
+
+-   Obtener, desde el directorio compartido para este ejercicio práctico, el conjunto de datos recolectado, que tiene por nombre "EP02-datos.csv".
+
+    ```{r}
+    # Librerias: 
+    library(dplyr)
+    library(ggpubr)
+    library(TeachingDemos)
+    # Cargo el conjunto de datos recopilados por la encuesta Casen 2017 en la Región Metropolitana
+    ruta_app <- getwd()
+
+    # Construyo la ruta completa al archivo CSV
+    ruta_archivo <- paste(ruta_app, "EP02 Datos.csv", sep = "/")
+
+    # Cargar el archivo CSV
+    datos <- read.csv2(ruta_archivo)
+    datos
+    ```
+
+-   Copiar los enunciados de los problemas asignados como comentarios de un script R.
+
+## 1. El Comité Olímpico cree que el mejor tiempo medio de los atletas de raza blanca después de ingresar al programa de entrenamiento es de 13,6 segundos. ¿Soportan los datos esta afirmación?
+
+Nota: consideraremos 0.05 de significancia
+
+- Hipótesis nula: el mejor tiempo medio de los atletas de raza blanca después de ingresar al programa de entrenamiento es de 13,6 segundos (u = 13,6 segundos)
+- Hipótesis alternativa: el mejor tiempo medio de los atletas de raza blanca después de ingresar al programa de entrenamiento no es de 13,6 segundos (u != 13,6 segundos)
+
+
+Ver que tipo de prueba usar:
+Tenemos que realizar una inferencia con medias, como no conocemos la varianza de la población no se usaremos la prueba z, así que tendríamos que ver si se puede usar la prueba t-student
+
+Condiciones de la prueba t-student:
+- Las observaciones son independientes 
+- Los datos provienen de una distribución cercana a la normal, para analizar esto aplicaremos la prueba de Shapiro
+
+En esta prueba como p-value = 0.7925 es mayor al nivel de significancia, concluimos que los datos provienen de una distribución cercana a la normal
+```{r}
+raza_blanca <- datos%>%filter(Raza == "Blanca")
+tiempos <- raza_blanca$Previo
+normalidad <- shapiro.test(tiempos)
+normalidad
+```
+
+```{r}
+alfa <- 0.05
+prueba <- t.test(tiempos, alternative = "two.sided", mu = 13.6, conf.level = 1 - alfa)
+prueba
+```
+
+como p-value = 5.154e-15 < 0.05 (Significancia), se rechaza la hipotesis nula en favor de la hipotesis alternativa. Se puede afirmar con un 95% de confianza, que el mejor tiempo medio de los atletas de raza blanca después de ingresar al programa de entrenamiento no es de 13,6 segundos
+
+
+
+## 2. ¿Sugieren los datos que la mejor marca de los atletas de raza oriental se reduce en promedio menos de 4,7 segundos tras el entrenamiento?
+
+Nota: consideraremos 0.05 de significancia
+
+- Hipótesis nula: la mejor marca de los atletas de raza oriental se reduce en promedio menos de 4,7 segundos tras el entrenamiento (u > 4.7 segundos)
+- Hipótesis alternativa: la mejor marca de los atletas de raza oriental se reduce en promedio 4,7 segundos o más tras el entrenamiento  (u < 4.7 segundos)
+
+Como vamos a comparar dos tiempos (el previo y el posterior), usaremos la prueba t para dos muestras pareadas
+
+Verificación de condiciones para uso de prueba t-student:
+
+- Las observaciones son independientes entre sí: se confirma ya que cada fila corresponde a un atleta, los tiempos de uno de estos no dependen del otro
+- Los datos provienen de una distribución cercana a la normal, para analizar esto aplicaremos la prueba de Shapiro
+
+```{r}
+orientales <- datos%>%filter(Raza == "Oriental")
+t1 <- raza_blanca$Previo  # tiempo previo
+t2 <- raza_blanca$Posterior # tiempo posterior
+diferencia <- t1 - t2
+normalidad <- shapiro.test(diferencia)
+normalidad
+```
+Como p-value = 0.3375 > significancia = 0.05, se comprueba que los datos siguen una distribución cercana a la normal
+
+
+```{r}
+alfa <- 0.05
+prueba <- t.test(diferencia, alternative = "less", mu = 4.7, conf.level = 1 - alfa)
+prueba
+```
+
+Como p-value = 7.465e-16 es menor a la significancia de 0.05, se rechaza la hipotesis nula en favor de la hipotesis alternativa. Se puede afirmar con un 95% de confianza, que la mejor marca de los atletas de raza oriental se reduce en promedio 4,7 segundos o más tras el entrenamiento
+
+
+3.  ¿Es posible afirmar que, en promedio, los atletas de raza negra superaban a los de raza blanca por más de 2 segundos antes del entrenamiento?
+
+
+# Con puntitos lejanos, lo que hacemos es ser más estricto, podemos disminuir el alfa a menor a 0.05
+
+4.  ¿Será cierto que hay más atletas de raza blanca que, en promedio, redujeron sus marcas en al menos 2,9 segundos que atletas de raza negra que lo hicieron en al menos 1,9 segundos?
+
+
+```{r}
+
+raza_negra <- datos%>%filter(Raza == "Negra")
+
+raza_blanca$Diferencia <- raza_blanca$Previo - raza_blanca$Posterior
+raza_blanca_filter <- raza_blanca %>% filter(Diferencia >= 2.9)
+
+raza_negra$Diferencia <- raza_negra$Previo - raza_negra$Posterior
+raza_negra_filter <- raza_negra %>% filter(Diferencia >= 1.9)
+
+largos <- c(length(raza_blanca$Id),length(raza_negra$Id))
+
+largos2 <- c(length(raza_blanca_filter$Id),length(raza_negra_filter$Id))
+
+alpha <- 0.05
+
+
+prueba <- prop.test(largos2, n = largos, alternative = "greater", conf.level = 1 - alpha)
+prueba
+
+```
+

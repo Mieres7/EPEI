@@ -1,0 +1,391 @@
+---
+title: "EI-EP09-respuesta-equipo-7"
+author: "Branco García Santana"
+date: "2023-11-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(pROC)
+library(lmtest)
+library(car)
+
+```
+
+Actividades:
+
+Para este ejercicio usaremos los datos de medidas anatómicas recolectados por Heinz et al. (2003) que ya conocimos en el ejercicio práctico anterior (disponibles en el archivo "EP09 Datos.csv"). Como en este case se requiere de una variable dicotómica, vamos a realizar lo siguiente:
+
+- Lectura de datos:
+
+```{r}
+datos <- read.csv2("EP09 Datos.csv", sep = ";")
+head(datos)
+```
+
+
+1. El equipo crea la variable IMC (índice de masa corporal) como el peso de una persona (en kilogramos) dividida por el cuadrado de su estatura (en metros).
+
+Peso -> Weight, Estatura -> Height -> cm
+
+```{r}
+# Crear la variable IMC
+datos$IMC <- datos$Weight / (datos$Height / 100)^2
+```
+
+2. Si bien esta variable se usa para clasificar a las personas en varias clases de estado nutricional (bajo peso, normal, sobrepeso, obesidad, obesidad mórbida), para efectos de este ejercicio, usaremos dos clases: sobrepeso (IMC ≥ 25,0) y no sobrepeso (IMC < 25,0).
+
+3. El equipo crea la variable dicotómica EN (estado nutricional) de acuerdo al valor de IMC de cada persona.
+
+```{r}
+# Sobrepeso: IMC >= 25.0
+# No sobrepeso: IMC < 25.0
+
+# Crear la variable dicotómica EN (estado nutricional)
+datos$EN <- ifelse(datos$IMC >= 25.0, "Sobrepeso", "No Sobrepeso")
+
+
+```
+
+
+Ahora podemos construir un modelo de regresión logística para predecir la variable EN, de acuerdo con las siguientes instrucciones:
+
+1. Definir la semilla a utilizar, que corresponde a los últimos cuatro dígitos del RUN (sin considerar el dígito verificador) del integrante de mayor edad del equipo.
+
+```{r}
+set.seed(8215)
+```
+
+2. Seleccionar una muestra de 90 mujeres (si la semilla es un número par) o 90 hombres (si la semilla es impar), asegurando que la mitad tenga estado nutricional “sobrepeso” y la otra mitad “no sobrepeso” en cada caso. Dividir esta muestra en dos conjuntos: los datos de 60 personas (30 con EN “sobrepeso”) para utilizar en la construcción de los modelos y 30 personas (15 con EN “sobrepeso”) para poder evaluarlos.
+
+
+```{r}
+datos_h <- datos[datos$Gender == 1, ] # Hombres
+
+h_sobrepeso = datos_h[datos_h$EN == "Sobrepeso",]
+h_no_sobrepeso = datos_h[datos_h$EN == "No Sobrepeso",]
+
+
+print(head(h_sobrepeso))
+print(head(h_no_sobrepeso))
+
+# Seleccionar 45 datos con sobrepeso y 45 datos sin sobrepeso
+muestra_h_sobrepeso <- h_sobrepeso[sample(1:nrow(h_sobrepeso), size = 45),]
+muestra_h_no_sobrepeso <- h_no_sobrepeso[sample(1:nrow(h_no_sobrepeso), size = 45),]
+
+muestra_h <- rbind(muestra_h_no_sobrepeso, muestra_h_sobrepeso)
+
+
+# Dividir en subconjuntos de 30 y 15
+subconjunto_30_sobrepeso <- muestra_h_sobrepeso[1:30, ]
+subconjunto_15_sobrepeso <- muestra_h_sobrepeso[31:45, ]
+
+subconjunto_30_no_sobrepeso <- muestra_h_no_sobrepeso[1:30, ]
+subconjunto_15_no_sobrepeso <- muestra_h_no_sobrepeso[31:45, ]
+
+# Combinar los subconjuntos  
+conjunto_final_60_entrenamiento <- rbind(subconjunto_30_sobrepeso, subconjunto_30_no_sobrepeso)
+conjunto_final_30_prueba <- rbind(subconjunto_15_sobrepeso, subconjunto_15_no_sobrepeso)
+
+
+```
+Recordar las ocho posibles variables predictoras seleccionadas de forma aleatoria en el ejercicio anterior.
+
+
+
+```{r}
+
+# Ocho predictores aleatorios previos.
+predictores <- c( "Knees.diameter", "Bicep.Girth", "Chest.diameter", "Wrists.diameter", "Elbows.diameter", "Chest.depth", "Bitrochanteric.diameter", "Navel.Girth")
+
+# Se obtiene el resto de predictores.
+predictores_completo <- names(conjunto_final_60_entrenamiento)
+resto_predictores <- setdiff(predictores_completo, predictores)
+
+# Se analiza la correlación entre las variables, esto mediante gráficos de caja.
+for (var in resto_predictores) {
+  p <- ggplot(conjunto_final_60_entrenamiento, aes_string(x = "EN", y = var)) +
+    geom_boxplot() +
+    labs(title = paste("Boxplot of", var, "by EN"))
+  print(p)
+}
+
+
+```
+
+
+
+
+Seleccionar, de las otras variables, una que el equipo considere que podría ser útil para predecir la clase EN, justificando bien esta selección.
+
+```{r}
+
+  # Para seleccionar un variable observamos la diferencia de las medias.
+  
+  diferencias_medianas <- data.frame(variable = character(), diferencia = numeric())
+  
+  for (var in resto_predictores) {
+    # Verificamos si la variable es numérica
+    if (is.numeric(conjunto_final_60_entrenamiento[[var]])) {
+      # Calculamos las medianas por grupo para la variable actual
+      medianas <- conjunto_final_60_entrenamiento %>% 
+        group_by(EN) %>% 
+        summarize(mediana = median(!!sym(var), na.rm = TRUE)) %>%
+        na.omit() # Eliminamos los grupos con datos faltantes
+  
+      # Asegúrate de que hay al menos dos grupos con medianas no-NA
+      if (nrow(medianas) > 1) {
+        # Calculamos la diferencia de las medianas
+        diferencia <- abs(medianas$mediana[1] - medianas$mediana[2])
+  
+        # Agregamos los resultados a nuestro dataframe
+        diferencias_medianas <- rbind(diferencias_medianas, data.frame(variable = var, diferencia = diferencia))
+      }
+    }
+  }
+  
+  # Ordenamos las variables por la diferencia de medianas
+  diferencias_medianas <- diferencias_medianas %>% arrange(desc(diferencia))
+  diferencias_medianas
+  
+```
+
+
+
+
+
+Usando el entorno R y paquetes estándares1, construir un modelo de regresión logística con el predictor seleccionado en el paso anterior y utilizando de la muestra obtenida.
+
+
+En base al análisis de las diferencias de medianas, se determina que la variable denominada
+- Waist.Girth
+Será la seleccionada, ya que es la que posee una mayor diferencia de medianas.
+
+
+```{r}
+
+conjunto_final_60_entrenamiento$EN <- as.factor(conjunto_final_60_entrenamiento$EN)
+
+modelo_inicial <- glm(EN ~ Waist.Girth, family = binomial(link= "logit"), data = 
+                conjunto_final_60_entrenamiento)
+print(summary(modelo_inicial))
+
+modelo_inicial
+
+
+```
+
+
+Usando herramientas estándares1 para la exploración de modelos del entorno R, buscar entre dos y cinco predictores de entre las variables seleccionadas al azar, recordadas en el punto 3, para agregar al modelo obtenido en el paso 5.
+
+```{r}
+
+#Ajustamos el modelo completo
+modelo_completo <- glm(EN ~ Knees.diameter + Bicep.Girth + Chest.diameter + Wrists.diameter + Elbows.diameter + Chest.depth + Bitrochanteric.diameter + Navel.Girth + Waist.Girth, family = binomial(link = "logit"), data = conjunto_final_60_entrenamiento)
+
+# Evaluamos las variables para incorporar
+print(add1(modelo_inicial, scope = modelo_completo))
+
+# Seleccionamos la variable con menor AIC -> En este caso Bicep.Girth
+modelo_final  <- update(modelo_inicial, . ~ . + Bicep.Girth)
+
+# Analizamos cual es mejor, y así poder seguir agregando predictores
+print(lrtest(modelo_inicial, modelo_final))
+
+# Evaluamos las variables para incorporar
+print(add1(modelo_final, scope = modelo_completo))
+
+# Seleccionamos la variable con menor AIC -> En este caso Bitrochanteric.diameter
+modelo_final  <- update(modelo_final, . ~ . + Bitrochanteric.diameter)
+
+# Analizamos cual es mejor, y así poder seguir agregando predictores
+print(lrtest(modelo_inicial, modelo_final))
+
+# Evaluamos las variables para incorporar
+print(add1(modelo_final, scope = modelo_completo))
+
+# Seleccionamos la variable con menor AIC -> En este caso Knees.diameter
+modelo_final  <- update(modelo_final, . ~ . + Knees.diameter)
+
+# Analizamos cual es mejor, y así poder seguir agregando predictores
+print(lrtest(modelo_inicial, modelo_final))
+```
+
+Tras analizar los resultados obtenidos, es posible agregar tres predictores al modelo inicial, Bicep.Girth, Bitrochanteric.diameter y Knees.diameter, esto pues al realizar un "Likelihood Ratio Test", el tercer p-value obtenido corresponde a  p-value = 0.06391 > 0.05. Por lo tanto, se justifica la elección de estos predictores.
+
+
+7. Evaluar la confiabilidad de los modelos (i.e. que tengan un buen nivel de ajuste y son generalizables) y “arreglarlos” en caso de que tengan algún problema.
+
+```{r}
+#Verificación de multicolinealidad
+cat("Verificación de multicolinealidad")
+vifs <- vif(modelo_final)
+cat("\nVIF: ")
+print(vifs)
+cat("\nPromedio VIF: ")
+print(mean(vifs))
+cat("------------------------------------------------\n")
+
+#Verificamos la independencia de los residuos
+print(durbinWatsonTest(modelo_final, max.lag = 5))
+cat("\n\n")
+
+#Detectamos posibles valores atipicos
+plot(modelo_final)
+
+# Obtenemos residuos y las estadisticas
+resultados <- data.frame(respuesta_predicha = fitted(modelo_final))
+
+resultados[["residuos_estandarizados"]] <- rstandard(modelo_final)
+resultados[["residuos_estudiantizados"]] <- rstudent(modelo_final)
+resultados[["distancia_Cook"]] <- cooks.distance(modelo_final)
+resultados[["dfBeta"]] <- dfbeta(modelo_final)
+resultados[["dffit"]] <- dffits(modelo_final)
+resultados[["apalancamiento"]] <- hatvalues(modelo_final)
+resultados[["covratio"]] <- covratio(modelo_final)
+
+
+# Buscamos las observciones con residuos estandarizados fuera del 95% esperado
+sospechoso1 <- which(abs(resultados[["residuos_estandarizados"]]) > 1.96)
+sospechoso1 <- sort(sospechoso1)
+cat("- Residuos estandarizados fuera del 95% esperado: ", sospechoso1, "\n")
+print(rownames(conjunto_final_60_entrenamiento[sospechoso1, ]))
+cat("------------------------------------------------\n")
+
+
+# Buscamos observaciones con distancia de Cook mayor a 1
+sospechoso2 <- which(resultados[["distancia_cook"]] > 1)
+cat("- Residuos con una distancia de Cook alta:", sospechoso2, "\n")
+print(rownames(conjunto_final_60_entrenamiento[sospechoso2, ]))
+cat("------------------------------------------------\n")
+
+# Buscamos observaciones con apalancamiento mayor igual al doble o triple del apalacamiento promedio
+apal_medio <- (ncol(conjunto_final_60_entrenamiento)) / nrow(conjunto_final_60_entrenamiento)
+sospechoso3 <- which(resultados[["apalancamiento"]] > apal_medio)
+sospechoso3 <- sort(sospechoso3)
+cat("- Residuos con apalancamiento fuera del rango (>")
+cat(round(apal_medio, 3), ")", "\n", sep = "" )
+print(rownames(conjunto_final_60_entrenamiento[sospechoso3, ]))
+cat("------------------------------------------------\n")
+
+
+# Revisar datos con DFbeta >= 1
+sospechoso4 <- which(apply(resultados[["dfBeta"]] >= 1, 1, any))
+sospechoso4 <- sort(sospechoso4)
+names(sospechoso4) <- NULL
+cat("- Residuos con DFBeta >= 1:", sospechoso4, "\n")
+print(rownames(conjunto_final_60_entrenamiento[sospechoso4, ]))
+cat("------------------------------------------------\n")
+
+
+# Detalle de las observaciones posiblemente atípicas
+sospechosos <- c(sospechoso1, sospechoso2, sospechoso3, sospechoso4)
+sospechosos <- sort(unique(sospechosos))
+cat("\n\n")
+cat("Casos sospechosos\n")
+cat("---------------------------------\n")
+print(conjunto_final_60_entrenamiento[sospechosos, ])
+cat("\n\n")
+print(resultados[sospechosos, ])
+```
+
+Usando código estándar1, evaluar el poder predictivo de los modelos con los datos de las 40 personas que no se incluyeron en su construcción en términos de sensibilidad y especificidad.
+
+```{r}
+# Se evalúa el modelos con el conjunto de entrenamiento y prueba
+
+cat("Evaluacion del modelo a partir del conjunto de entrenamiento: \n")
+prob_entrenamiento <- predict(modelo_final, conjunto_final_60_entrenamiento, type = "response")
+
+umbral <- 0.5
+prob_entrenamiento <- sapply(prob_entrenamiento, function(p) ifelse(p > umbral, 1, 0))
+
+# Asegúrate de que prob_entrenamiento sea numérico
+prob_entrenamiento <- as.numeric(prob_entrenamiento)
+
+ROC_entrenamiento <- roc(conjunto_final_60_entrenamiento[["EN"]], prob_entrenamiento)
+plot(ROC_entrenamiento)
+
+# Crear una tabla de contingencia
+matriz_confusion_e <- table(Real = conjunto_final_60_entrenamiento[["EN"]], Predicho = prob_entrenamiento)
+
+# Imprimir la matriz de confusión
+print(matriz_confusion_e)
+
+sensibilidad <- matriz_confusion_e[2, 2] / sum(matriz_confusion_e[2, ])
+especificidad <- matriz_confusion_e[1, 1] / sum(matriz_confusion_e[1, ])
+cat("Sensibilidad:", sensibilidad)
+cat("\n")
+cat("Especificidad:", especificidad)
+
+cat("\n---------------------------------\n")
+
+cat("Evaluacion del modelo a partir del conjunto de prueba: \n")
+prob_prueba <- predict(modelo_final, conjunto_final_30_prueba, type = "response")
+
+umbral <- 0.5
+prob_prueba <- sapply(prob_prueba, function(p) ifelse(p > umbral, 1, 0))
+prob_prueba <- as.numeric(prob_prueba)
+
+ROC_prueba <- roc(conjunto_final_30_prueba[["EN"]], prob_prueba)
+plot(ROC_prueba)
+
+# Crear una tabla de contingencia
+matriz_confusion_p <- table(Real = conjunto_final_30_prueba[["EN"]], Predicho = prob_prueba)
+
+# Imprimir la matriz de confusión
+print(matriz_confusion_p)
+
+sensibilidad <- matriz_confusion_p[2, 2] / sum(matriz_confusion_p[2, ])
+especificidad <- matriz_confusion_p[1, 1] / sum(matriz_confusion_p[1, ])
+cat("Sensibilidad:", sensibilidad)
+cat("\n")
+cat("Especificidad:", especificidad)
+
+cat("\n---------------------------------\n")
+
+# Se obtiene la muestra de 40
+
+
+muestra_90 <- rbind(conjunto_final_60_entrenamiento, conjunto_final_30_prueba)
+index <- as.numeric(rownames(muestra_90))
+datos_h_resto<- datos_h[!rownames(datos_h) %in% index, ]
+muestra_40 <- datos_h_resto[sample(1:nrow(datos_h_resto), size = 40), ]
+
+cat("Evaluacion del modelo a partir del conjunto de 40 personas nuevas: \n")
+prob_40 <- predict(modelo_final, muestra_40, type = "response")
+
+umbral <- 0.5
+prob_40 <- sapply(prob_40, function(p) ifelse(p > umbral, 1, 0))
+prob_40 <- as.numeric(prob_40)
+
+ROC_prueba <- roc(muestra_40[["EN"]], prob_40)
+plot(ROC_prueba)
+
+# Crear una tabla de contingencia
+matriz_confusion_40 <- table(Real = muestra_40[["EN"]], Predicho = prob_40)
+
+# Imprimir la matriz de confusión
+print(matriz_confusion_40)
+
+sensibilidad <- matriz_confusion_40[2, 2] / sum(matriz_confusion_40[2, ])
+especificidad <- matriz_confusion_40[1, 1] / sum(matriz_confusion_40[1, ])
+cat("Sensibilidad:", sensibilidad)
+cat("\n")
+cat("Especificidad:", especificidad)
+
+cat("\n---------------------------------\n")
+
+
+```
+
+Finalmente, para todos los conjuntos, prueba, entrenamiento y la muestra de 40 personas, se tiene una alta sensibilidad y especificidad. Por lo tanto se puede concluir que el modelo está bien construido y puede predecir el estado nutricional de los hombres seleccionados.
+
+
