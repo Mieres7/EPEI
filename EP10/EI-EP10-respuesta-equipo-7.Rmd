@@ -103,7 +103,7 @@ Recordar las ocho posibles variables predictoras seleccionadas de forma aleatori
 ```{r}
 
 # Ocho predictores aleatorios previos.
-predictores <- c( "Knees.diameter", "Bicep.Girth", "Chest.diameter", "Wrists.diameter", "Elbows.diameter", "Chest.depth", "Bitrochanteric.diameter", "Navel.Girth")
+spredictores <- c( "Knees.diameter", "Bicep.Girth", "Chest.diameter", "Wrists.diameter", "Elbows.diameter", "Chest.depth", "Bitrochanteric.diameter", "Navel.Girth")
 
 # Se obtiene el resto de predictores.
 predictores_completo <- names(conjunto_final_60_entrenamiento)
@@ -294,6 +294,9 @@ cat("---------------------------------\n")
 print(conjunto_final_60_entrenamiento[sospechosos, ])
 cat("\n\n")
 print(resultados[sospechosos, ])
+
+
+
 ```
 
 Usando código estándar1, evaluar el poder predictivo de los modelos con los datos de las 40 personas que no se incluyeron en su construcción en términos de sensibilidad y especificidad.

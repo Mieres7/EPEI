@@ -1,0 +1,218 @@
+---
+title: "Ejercicio 10 version mia"
+author: "Grupo  3"
+date: "2023-12-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#############
+# Librerías #
+#############
+
+library(dplyr)
+library(tidyverse)
+library(ggpubr)
+library(ggplot2)
+library(tidyr)
+library(reshape2)
+library(pROC)
+library(lmtest)
+library(car)
+
+datos <- read.csv2("EP09 Datos.csv", sep = ";")
+
+# creacion columnas IMC y EN
+datos$IMC <- datos$Weight / (datos$Height / 100) ^ 2
+datos$EN <- ifelse(datos$IMC >= 25.0, "Sobrepreso", "No Sobrepreso")
+
+```
+
+```{r}
+set.seed(821) # cambie la semilla para poder hacer bien el ejercicio, con la otra daba mal el modelo_adelante
+
+# muestra 90 hombres
+hombres <- datos[datos$Gender == 1, ]
+
+hombre_Sobrepreso <- hombres[hombres$EN == "Sobrepreso",]
+hombre_No_Sobrepreso <- hombres[hombres$EN == "No Sobrepreso",]
+
+muestra_Sobrepreso <- hombre_Sobrepreso[sample(1:nrow(hombre_Sobrepreso), size = 45), ]
+muestra_No_Sobrepreso <- hombre_No_Sobrepreso[sample(1:nrow(hombre_No_Sobrepreso), size = 45), ]
+
+muestra <- rbind(muestra_No_Sobrepreso, muestra_Sobrepreso)
+
+Sobrepreso30 <- muestra_Sobrepreso[1:30, ]
+Sobrepreso15 <- muestra_Sobrepreso[31:45, ]
+
+NoSobrepreso30 <- muestra_No_Sobrepreso[1:30, ]
+NoSobrepreso15 <- muestra_No_Sobrepreso[31: 45, ]
+
+entrenamiento <- rbind(Sobrepreso30, NoSobrepreso30)
+prueba <- rbind(NoSobrepreso15, Sobrepreso15)
+
+
+# 8 predictores ejercicio 9
+predictores <- c( "Knees.diameter", "Bicep.Girth", "Chest.diameter", "Wrists.diameter", "Elbows.diameter", "Chest.depth", "Bitrochanteric.diameter", "Navel.Girth")
+
+# Se selecciona el predictor peso para predecir la variable EN. 
+
+# Se construye el modelo de regresion logistica con el predictor seleccionado
+entrenamiento$EN <- as.factor(entrenamiento$EN)
+modelo <- glm(EN ~ Weight,  data = entrenamiento, family = binomial(link = "logit")) # ojo de usar factor
+
+formula <- formula(paste(c(". ~ .", predictores), collapse = " + ")) 
+# por lo que entiendo esto lo que hace es agregarle los predicotores al modelo que ya teniamos
+modelo_completo <- update(modelo, formula)
+summary(modelo_completo)
+
+# Agregamos predicotores usando seleccion hacia adelante
+modelo_adelante <- step(modelo, scope = list(lower = modelo, upper = modelo_completo), direction = "both")
+summary(modelo_adelante)
+
+# Se evalúa el modelo
+# OJO que el ejercicio pedia evaluar los 2. Por lo mismo la multicolinealidad solo se verifica para los multiples, ver scritp de ejemplo
+
+predictores_modelo_adelante <- names(coef(modelo_adelante))[-1]
+datos_p <- entrenamiento[, c(predictores_modelo_adelante, "Weight")]
+datos_p
+
+resultados <- data.frame(respuesta_predicha = fitted(modelo_adelante))
+
+
+resultados[["residuos_estandarizados"]] <- rstandard(modelo_adelante)
+resultados[["residuos_estudiantizados"]] <- rstudent(modelo_adelante)
+resultados[["distancia_Cook"]] <- cooks.distance(modelo_adelante)
+resultados[["dfBeta"]] <- dfbeta(modelo_adelante)
+resultados[["dffit"]] <- dffits(modelo_adelante)
+resultados[["apalancamiento"]] <- hatvalues(modelo_adelante)
+resultados[["covratio"]] <- covratio(modelo_adelante)
+
+cat("Identificación de valores atípicos: \n")
+
+# Buscamos las observciones con residuos estandarizados fuera del 95% esperado
+sospechoso1 <- which(abs(resultados[["residuos_estandarizados"]]) > 1.96)
+cat("- Residuos estandarizados fuera del 95% esperado: ", sospechoso1, "\n")
+
+# Buscamos observaciones con distancia de Cook mayor a 1
+sospechoso2 <- which(resultados[["distancia_cook"]] > 1)
+cat("- Residuos con una distancia de Cook alta:", sospechoso2, "\n")
+
+# Buscamos observaciones con apalancamiento mayor igual al doble del apalacamiento promedio
+apal_medio <- (ncol(datos_p) + 1) / nrow(datos_p)
+sospechoso3 <- which(resultados[["apalancamiento"]] > 2 * apal_medio)
+cat("- Residuos con apalancamiento fuera del rango: ", sospechoso3, "\n")
+
+sospechoso4 <- which(apply(resultados[["dfBeta"]] >= 1, 1, any))
+names(sospechoso4) <- NULL
+cat("- Residuos con DFBeta >= 1:", sospechoso4, "\n")
+
+# Buscamos observaciones con razón de covarianza fuera de rango
+inferior <- 1 - 3 * apal_medio
+superior <- 1 + 3 * apal_medio
+sospechoso5 <- which(resultados[["covratio"]] < inferior | resultados[["covratio"]] > superior)
+cat("- Residuos con razón de covarianza fuera de rango: ", sospechoso5, "\n")
+
+# Resumen de valores sospechosos
+
+sospechosos <- c(sospechoso1, sospechoso2, sospechoso3, sospechoso4, sospechoso5)
+
+sospechosos <- sort(unique(sospechosos))
+
+cat("\nResumen de valores sospechosos: \n")
+cat("Apalancamiento promedio: ", apal_medio, "\n")
+cat("Intervalo razón de covarianza: [", inferior, "; ", superior, "]\n\n", sep = "")
+
+print(round(resultados[sospechosos, c("distancia_Cook", "apalancamiento", "covratio")], 3))
+
+# 2. Verificacion de condiciones a modo que el modelo sea generalizable
+# 2.1 Independencia de los residuos
+cat("Prueba de Durbin-Watson para autocorrelaciones ")
+cat("entre errores:\n")
+print(durbinWatsonTest(modelo_adelante)) # p-value > 0.05 concluye que son independientes, tener cuidado con el orden de los datos
+
+# Nose bien para que se usan estos graficos, la explicacion esta en el script de ejemplo pero No la entiendo 
+# xm1 <- data.frame(Logit = log(fitted(modelo_adelante)/(1-fitted(modelo_adelante))),
+#                    Weight = entrenamiento[["Weight"]],
+#                    Navel.Girth = entrenamiento[["Navel.Girth"]],
+#                    Bicep.Girth = entrenamiento[["Bicep.Girth"]],
+#                   Bitrochanteric.diameter = entrenamiento[["Bitrochanteric.diameter"]]
+#                   )
+# xm1.l <- pivot_longer(xm1, -Logit, names_to = "Predictor", values_to = "Valor")
+# pxm1 <- ggscatter(data = xm1.l, x = "Logit", y = "Valor", conf.int = TRUE) +
+#   geom_smooth(method = "loess") +
+#   theme_bw() +
+#   facet_wrap(~ Predictor, scales = "free_y")
+# print(pxm1)
+# 
+# xm2 <- data.frame(Indice = 1:nrow(entrenamiento),
+#                   Residuo.estandarizado = rstandard(modelo_adelante))
+# pxm2 <- ggscatter(data = xm2, x = "Indice", y = "Residuo.estandarizado")
+# print(pxm2)
+
+# 2.2 Distribucion Normal de los residuos
+cat("Prueba de Noramalidad para los residuos:\n")
+print(shapiro.test(modelo_adelante$residuals)) # p-value > 0.05, siguen una distribucion Normal
+
+# 2.3 Homocedasticidad de los residuos
+cat("Prueba de homocedasticidad para los residuos:\n")
+print(bptest(modelo_adelante)) # ojo que esta cambia respecto de RLM y RLS
+
+# 2.4 Multicolinealidad
+vifs <- vif(modelo_adelante)
+cat("Verificar la multicolinealidad:\n")
+cat("- VIFs: \n")
+print(vifs)
+cat("- Tolerancias:\n")
+print(1/vifs)
+cat("- VIF medio: ", mean(vifs), "\n")
+
+# Con lo anterior tenemos que el modelo esta bien ajustado y es generalizable. 
+
+
+# Se evalúa el poder predictivo: usar matriz de confusion, primero se vera a maNo luego con las funciones de caret
+
+# 1. sin paquetes caret/leaps
+
+# modelo con los datos de entrenamiento 
+umbral = 0.5
+
+probs.trm <- fitted(modelo_adelante)
+preds.trm <- sapply(probs.trm,
+                    function (p) ifelse (p >= umbral, "Sobrepreso", "No Sobrepreso"))
+preds.trm <- factor(preds.trm, levels = levels(entrenamiento[["EN"]]))
+TP.trm <- sum(entrenamiento[["EN"]] == "Sobrepreso" & preds.trm == "Sobrepreso")
+FP.trm <- sum(entrenamiento[["EN"]] == "No Sobrepreso" & preds.trm == "Sobrepreso")
+TN.trm <- sum(entrenamiento[["EN"]] == "No Sobrepreso" & preds.trm == "No Sobrepreso")
+FN.trm <- sum(entrenamiento[["EN"]] == "Sobrepreso" & preds.trm == "No Sobrepreso")
+acc.trm <- (TP.trm + TN.trm) / (TP.trm + FP.trm + TN.trm + FN.trm)
+sen.trm <- TP.trm / (TP.trm + FN.trm)
+esp.trm <- TN.trm / (TN.trm + FP.trm)
+
+# Ahora calculemos el poder predictivo del modelo RLogS en los datos de prueba 
+probs.tem <- predict(modelo_adelante, prueba, type = "response")
+preds.tem <- sapply(probs.tem,
+                    function (p) ifelse (p >= umbral, "Sobrepreso", "No Sobrepreso"))
+preds.tem <- factor(preds.tem, levels = levels(prueba[["EN"]]))
+TP.tem <- sum(prueba[["EN"]] == "Sobrepreso" & preds.tem == "Sobrepreso")
+FP.tem <- sum(prueba[["EN"]] == "No Sobrepreso" & preds.tem == "Sobrepreso")
+TN.tem <- sum(prueba[["EN"]] == "No Sobrepreso" & preds.tem == "No Sobrepreso")
+FN.tem <- sum(prueba[["EN"]] == "Sobrepreso" & preds.tem == "No Sobrepreso")
+acc.tem <- (TP.tem + TN.tem) / (TP.tem + FP.tem + TN.tem + FN.tem)
+sen.tem <- TP.tem / (TP.tem + FN.tem)
+esp.tem <- TN.tem / (TN.tem + FP.tem)
+
+cat("\nRendimiento del modelo de RLogM:\n")
+cat("    Exactitud entrenamiento:", sprintf("%.2f", acc.trm * 100), "\n")
+cat("           Exactitud prueba:", sprintf("%.2f", acc.tem * 100), "\n")
+cat(" Sensibilidad entrenamiento:", sprintf("%.2f", sen.trm * 100), "\n")
+cat("        Sensibilidad prueba:", sprintf("%.2f", sen.tem * 100), "\n")
+cat("Especificidad entrenamiento:", sprintf("%.2f", esp.trm * 100), "\n")
+cat("       Especificidad prueba:", sprintf("%.2f", esp.tem * 100), "\n")
+cat("\n")
+
+
+```
+
