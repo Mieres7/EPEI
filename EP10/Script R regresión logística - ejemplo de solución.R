@@ -17,9 +17,9 @@ library(tidyverse)
 #    para utilizar en la construcción de los modelos y 30 personas (15 con EN
 #    “sobrepeso”) para poder evaluarlos.
 ################################################################################
-
+set.seed(821)
 # Fijamos la carpeta de trabajo
-setwd("~/Downloads")
+setwd("C:/Users/vicen/OneDrive/Escritorio/EPEI/EP10")
 
 # Cargamos los datos
 datos <- read.csv2("EP09 Datos.csv")

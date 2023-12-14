@@ -26,32 +26,33 @@ datos <- read.csv2("EP09 Datos.csv", sep = ";")
 
 # creacion columnas IMC y EN
 datos$IMC <- datos$Weight / (datos$Height / 100) ^ 2
-datos$EN <- ifelse(datos$IMC >= 25.0, "Sobrepreso", "No Sobrepreso")
+datos$EN <- ifelse(datos$IMC >= 25.0, "Sobrepeso", "No Sobrepeso")
+datos$EN <- factor(datos$EN)
 
 ```
 
 ```{r}
-set.seed(821) # cambie la semilla para poder hacer bien el ejercicio, con la otra daba mal el modelo_adelante
+set.seed(8215) # cambie la semilla para poder hacer bien el ejercicio, con la otra daba mal el modelo_adelante
 
 # muestra 90 hombres
 hombres <- datos[datos$Gender == 1, ]
 
-hombre_Sobrepreso <- hombres[hombres$EN == "Sobrepreso",]
-hombre_No_Sobrepreso <- hombres[hombres$EN == "No Sobrepreso",]
+hombre_Sobrepeso <- hombres[hombres$EN == "Sobrepeso",]
+hombre_No_Sobrepeso <- hombres[hombres$EN == "No Sobrepeso",]
 
-muestra_Sobrepreso <- hombre_Sobrepreso[sample(1:nrow(hombre_Sobrepreso), size = 45), ]
-muestra_No_Sobrepreso <- hombre_No_Sobrepreso[sample(1:nrow(hombre_No_Sobrepreso), size = 45), ]
+muestra_Sobrepeso <- hombre_Sobrepeso[sample(1:nrow(hombre_Sobrepeso), size = 45), ]
+muestra_No_Sobrepeso <- hombre_No_Sobrepeso[sample(1:nrow(hombre_No_Sobrepeso), size = 45), ]
 
-muestra <- rbind(muestra_No_Sobrepreso, muestra_Sobrepreso)
+muestra <- rbind(muestra_No_Sobrepeso, muestra_Sobrepeso)
 
-Sobrepreso30 <- muestra_Sobrepreso[1:30, ]
-Sobrepreso15 <- muestra_Sobrepreso[31:45, ]
+Sobrepeso30 <- muestra_Sobrepeso[1:30, ]
+Sobrepeso15 <- muestra_Sobrepeso[31:45, ]
 
-NoSobrepreso30 <- muestra_No_Sobrepreso[1:30, ]
-NoSobrepreso15 <- muestra_No_Sobrepreso[31: 45, ]
+NoSobrepeso30 <- muestra_No_Sobrepeso[1:30, ]
+NoSobrepeso15 <- muestra_No_Sobrepeso[31: 45, ]
 
-entrenamiento <- rbind(Sobrepreso30, NoSobrepreso30)
-prueba <- rbind(NoSobrepreso15, Sobrepreso15)
+entrenamiento <- rbind(Sobrepeso30, NoSobrepeso30)
+prueba <- rbind(NoSobrepeso15, Sobrepeso15)
 
 
 # 8 predictores ejercicio 9
@@ -134,18 +135,25 @@ cat("entre errores:\n")
 print(durbinWatsonTest(modelo_adelante)) # p-value > 0.05 concluye que son independientes, tener cuidado con el orden de los datos
 
 # Nose bien para que se usan estos graficos, la explicacion esta en el script de ejemplo pero No la entiendo 
-# xm1 <- data.frame(Logit = log(fitted(modelo_adelante)/(1-fitted(modelo_adelante))),
-#                    Weight = entrenamiento[["Weight"]],
-#                    Navel.Girth = entrenamiento[["Navel.Girth"]],
-#                    Bicep.Girth = entrenamiento[["Bicep.Girth"]],
-#                   Bitrochanteric.diameter = entrenamiento[["Bitrochanteric.diameter"]]
-#                   )
-# xm1.l <- pivot_longer(xm1, -Logit, names_to = "Predictor", values_to = "Valor")
-# pxm1 <- ggscatter(data = xm1.l, x = "Logit", y = "Valor", conf.int = TRUE) +
-#   geom_smooth(method = "loess") +
-#   theme_bw() +
-#   facet_wrap(~ Predictor, scales = "free_y")
-# print(pxm1)
+# este es el grafico de que tiene solo 1 predictor
+xs1 <- data.frame(Logit = log(fitted(modelo)/(1-fitted(modelo))),
+                  Weight = entrenamiento[["Weight"]])
+pxs1 <- ggscatter(data = xs1, x = "Logit", y = "Weight", conf.int = TRUE)
+print(pxs1)
+
+
+xm1 <- data.frame(Logit = log(fitted(modelo_adelante)/(1-fitted(modelo_adelante))),
+                   Weight = entrenamiento[["Weight"]],
+                   Navel.Girth = entrenamiento[["Navel.Girth"]],
+                   Bicep.Girth = entrenamiento[["Bicep.Girth"]],
+                  Bitrochanteric.diameter = entrenamiento[["Bitrochanteric.diameter"]]
+                  )
+xm1.l <- pivot_longer(xm1, -Logit, names_to = "Predictor", values_to = "Valor")
+pxm1 <- ggscatter(data = xm1.l, x = "Logit", y = "Valor", conf.int = TRUE) +
+  geom_smooth(method = "loess") +
+  theme_bw() +
+  facet_wrap(~ Predictor, scales = "free_y")
+print(pxm1)
 # 
 # xm2 <- data.frame(Indice = 1:nrow(entrenamiento),
 #                   Residuo.estandarizado = rstandard(modelo_adelante))
@@ -181,25 +189,25 @@ umbral = 0.5
 
 probs.trm <- fitted(modelo_adelante)
 preds.trm <- sapply(probs.trm,
-                    function (p) ifelse (p >= umbral, "Sobrepreso", "No Sobrepreso"))
-preds.trm <- factor(preds.trm, levels = levels(entrenamiento[["EN"]]))
-TP.trm <- sum(entrenamiento[["EN"]] == "Sobrepreso" & preds.trm == "Sobrepreso")
-FP.trm <- sum(entrenamiento[["EN"]] == "No Sobrepreso" & preds.trm == "Sobrepreso")
-TN.trm <- sum(entrenamiento[["EN"]] == "No Sobrepreso" & preds.trm == "No Sobrepreso")
-FN.trm <- sum(entrenamiento[["EN"]] == "Sobrepreso" & preds.trm == "No Sobrepreso")
+                    function (p) ifelse (p >= umbral, "Sobrepeso", "No Sobrepeso"))
+#preds.trm <- factor(preds.trm, levels = levels(entrenamiento[["EN"]]))
+TP.trm <- sum(entrenamiento[["EN"]] == "Sobrepeso" & preds.trm == "Sobrepeso")
+FP.trm <- sum(entrenamiento[["EN"]] == "No Sobrepeso" & preds.trm == "Sobrepeso")
+TN.trm <- sum(entrenamiento[["EN"]] == "No Sobrepeso" & preds.trm == "No Sobrepeso")
+FN.trm <- sum(entrenamiento[["EN"]] == "Sobrepeso" & preds.trm == "No Sobrepeso")
 acc.trm <- (TP.trm + TN.trm) / (TP.trm + FP.trm + TN.trm + FN.trm)
 sen.trm <- TP.trm / (TP.trm + FN.trm)
 esp.trm <- TN.trm / (TN.trm + FP.trm)
 
-# Ahora calculemos el poder predictivo del modelo RLogS en los datos de prueba 
+# Ahora calculemos el poder predictivo del modelo adelante en los datos de prueba 
 probs.tem <- predict(modelo_adelante, prueba, type = "response")
 preds.tem <- sapply(probs.tem,
-                    function (p) ifelse (p >= umbral, "Sobrepreso", "No Sobrepreso"))
-preds.tem <- factor(preds.tem, levels = levels(prueba[["EN"]]))
-TP.tem <- sum(prueba[["EN"]] == "Sobrepreso" & preds.tem == "Sobrepreso")
-FP.tem <- sum(prueba[["EN"]] == "No Sobrepreso" & preds.tem == "Sobrepreso")
-TN.tem <- sum(prueba[["EN"]] == "No Sobrepreso" & preds.tem == "No Sobrepreso")
-FN.tem <- sum(prueba[["EN"]] == "Sobrepreso" & preds.tem == "No Sobrepreso")
+                    function (p) ifelse (p >= umbral, "Sobrepeso", "No Sobrepeso"))
+#preds.tem <- factor(preds.tem, levels = levels(prueba[["EN"]]))
+TP.tem <- sum(prueba[["EN"]] == "Sobrepeso" & preds.tem == "Sobrepeso")
+FP.tem <- sum(prueba[["EN"]] == "No Sobrepeso" & preds.tem == "Sobrepeso")
+TN.tem <- sum(prueba[["EN"]] == "No Sobrepeso" & preds.tem == "No Sobrepeso")
+FN.tem <- sum(prueba[["EN"]] == "Sobrepeso" & preds.tem == "No Sobrepeso")
 acc.tem <- (TP.tem + TN.tem) / (TP.tem + FP.tem + TN.tem + FN.tem)
 sen.tem <- TP.tem / (TP.tem + FN.tem)
 esp.tem <- TN.tem / (TN.tem + FP.tem)
@@ -213,6 +221,34 @@ cat("Especificidad entrenamiento:", sprintf("%.2f", esp.trm * 100), "\n")
 cat("       Especificidad prueba:", sprintf("%.2f", esp.tem * 100), "\n")
 cat("\n")
 
-
 ```
+```{r}
+library(caret)
+
+cat("Evaluacion con conjunto de entrenamiento")
+
+probs_e <- predict(modelo_adelante, entrenamiento, type = "response")
+
+preds_e <- sapply(probs_e, function(p) ifelse(p >= 0.5, "Sobrepeso", "No Sobrepeso"))
+
+preds_e <- factor(preds_e, levels = levels(muestra[["EN"]]))
+roc_e <- roc(entrenamiento[["EN"]], probs_e)
+plot(roc_e)
+matriz_e <- confusionMatrix(preds_e, entrenamiento[["EN"]])
+print(matriz_e)
+
+
+cat("Evaluacion con conjunto de prueba")
+
+probs_p <- predict(modelo_adelante, prueba, type = "response")
+probs_p
+preds_p <- sapply(probs_p, function(p) ifelse(p >= 0.5, "Sobrepeso", "No sobrepeso"))
+preds_p <- factor(preds_p, levels = levels(muestra[["EN"]]))
+roc_p <- roc(prueba[["EN"]], probs_p)
+plot(roc_p)
+
+matriz_p <- confusionMatrix(preds_p, prueba[["EN"]])
+print(matriz_p)
+```
+
 
