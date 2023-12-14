@@ -20,7 +20,6 @@ library(caret)
 
 ```{r}
 
-
 datos <- read.csv2("EP09 Datos.csv", sep = ";")
 
 ```
